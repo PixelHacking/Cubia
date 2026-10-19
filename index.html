@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Cubia</title>
+<style>
+:root{color-scheme:dark;--ui:rgba(0,0,0,.45);--ln:#fff}
+html,body{margin:0;height:100%;background:#87ceeb;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;font-family:system-ui,sans-serif;color:#fff}
+canvas{display:block;width:100%;height:100%}
+#cross{position:fixed;left:50%;top:50%;width:18px;height:18px;margin:-9px;pointer-events:none;mix-blend-mode:difference}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff}
+#cross:before{left:8px;top:0;width:2px;height:18px}#cross:after{top:8px;left:0;height:2px;width:18px}
+#bar{position:fixed;left:50%;bottom:calc(10px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:3px;background:var(--ui);padding:3px;border-radius:6px;max-width:96vw}
+.slot{width:min(44px,9.5vw);height:min(44px,9.5vw);border:3px solid #555;background-color:#222;image-rendering:pixelated;box-sizing:border-box}
+.slot.on{border-color:#fff}
+#info{position:fixed;left:calc(8px + env(safe-area-inset-left,0px));top:calc(8px + env(safe-area-inset-top,0px));font:12px monospace;background:var(--ui);padding:4px 6px;border-radius:4px}
+#ov{position:fixed;inset:0;background:rgba(10,20,30,.8);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;gap:12px}
+#ov h1{font-size:56px;margin:0;letter-spacing:4px;text-shadow:4px 4px 0 #2a6b2a}
+#ov p{margin:0;max-width:420px;line-height:1.5;opacity:.9}
+button{font:bold 20px system-ui;padding:12px 36px;background:#4a9e3a;color:#fff;border:3px solid #2a6b2a;border-radius:6px}
+#touch{display:none}
+body.t #touch{display:block}
+#joy{position:fixed;left:calc(24px + env(safe-area-inset-left,0px));bottom:calc(70px + env(safe-area-inset-bottom,0px));width:130px;height:130px;border-radius:50%;background:var(--ui);border:2px solid #fff6}
+#knob{position:absolute;left:45px;top:45px;width:40px;height:40px;border-radius:50%;background:#fffa}
+.tb{position:fixed;right:calc(20px + env(safe-area-inset-right,0px));width:64px;height:64px;border-radius:50%;background:var(--ui);border:2px solid #fff6;display:flex;align-items:center;justify-content:center;font-size:26px;padding:0;color:#fff}
+#bj{bottom:calc(90px + env(safe-area-inset-bottom,0px))}
+#bd{bottom:calc(20px + env(safe-area-inset-bottom,0px));display:none}
+#bf{top:calc(8px + env(safe-area-inset-top,0px));width:48px;height:48px;font-size:20px}
+</style></head><body>
+<canvas id="c"></canvas><div id="cross"></div><div id="info"></div><div id="bar"></div>
+<div id="touch"><div id="joy"><div id="knob"></div></div><button class="tb" id="bj">⬆</button><button class="tb" id="bd">⬇</button><button class="tb" id="bf">✈</button></div>
+<div id="ov"><h1>CUBIA</h1><p id="help"></p><button id="go">Gioca</button></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const isTouch='ontouchstart' in window||navigator.maxTouchPoints>0;
+if(isTouch)document.body.classList.add('t');
+$('help').innerHTML=isTouch?'Joystick a sinistra per muoverti, trascina a destra per guardare.<br>Tocca = piazza blocco, tieni premuto = rompi.':'WASD muovi, Spazio salta, mouse guarda.<br>Clic sinistro rompi, destro piazza, 1-8 o rotella scegli blocco, F vola (Spazio/Maiusc su/giù).';
+// ---------- texture atlas (generata, originale) ----------
+const N=10,TS=16,ac=document.createElement('canvas');ac.width=N*TS;ac.height=TS;
+const ax=ac.getContext('2d');
+const hh=(a,b,c)=>{let n=Math.sin(a*12.9898+b*78.233+c*37.719)*43758.5453;return n-Math.floor(n)};
+function tile(t,f){for(let y=0;y<TS;y++)for(let x=0;x<TS;x++){const r=hh(x,y,t),c=f(x,y,r);ax.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},${c[3]===undefined?1:c[3]})`;ax.fillRect(t*TS+x,y,1,1)}}
+const sh=(c,k)=>c.map(v=>Math.max(0,Math.min(255,v+k)));
+const G=[84,158,58],D=[134,96,67];
+tile(0,(x,y,r)=>sh(G,(r-.5)*40));
+tile(1,(x,y,r)=>y<4+(r>.6?1:0)?sh(G,(r-.5)*40):sh(D,(r-.5)*30));
+tile(2,(x,y,r)=>sh(D,(r-.5)*30));
+tile(3,(x,y,r)=>sh([125,125,128],(r-.5)*50));
+tile(4,(x,y,r)=>sh([218,206,145],(r-.5)*24));
+tile(5,(x,y,r)=>sh([104,82,50],(hh(x,0,5)-.5)*50+(r-.5)*14));
+tile(6,(x,y,r)=>{const d=Math.max(Math.abs(x-7.5),Math.abs(y-7.5));return sh([165,135,85],(d%3<1.5?-18:8)+(r-.5)*12)});
+tile(7,(x,y,r)=>r<.22?[0,0,0,0]:sh([52,132,44],(r-.5)*60));
+tile(8,(x,y,r)=>sh([172,136,82],(y%4==0?-26:0)+(r-.5)*14));
+tile(9,(x,y,r)=>(y%4==0||(x+(y>>2)%2*4)%8==0)?[190,185,175]:sh([150,68,58],(r-.5)*24));
+const tex=new THREE.CanvasTexture(ac);tex.magFilter=tex.minFilter=THREE.NearestFilter;
+const ATLAS=ac.toDataURL();
+// blocks: 1 erba 2 terra 3 pietra 4 sabbia 5 tronco 6 foglie 7 assi 8 mattoni; [lato,sopra,sotto]
+const T=[0,[1,0,2],[2,2,2],[3,3,3],[4,4,4],[5,6,6],[7,7,7],[8,8,8],[9,9,9]];
+const ICON=[0,0,2,3,4,5,7,8,9],HOT=[1,2,3,4,5,6,7,8];
+let sel=0;const bar=$('bar');
+HOT.forEach((b,i)=>{const d=document.createElement('div');d.className='slot';d.style.backgroundImage=`url(${ATLAS})`;d.style.backgroundSize=`${N*100}% 100%`;d.style.backgroundPosition=`${ICON[b]/(N-1)*100}% 0`;d.addEventListener('pointerdown',e=>{e.stopPropagation();pick(i)});bar.appendChild(d)});
+function pick(i){sel=(i+8)%8;[...bar.children].forEach((d,j)=>d.classList.toggle('on',j==sel))}pick(0);
+// ---------- mondo ----------
+const CS=16,H=64,SEED=7.3,R=isTouch?3:5;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const h2=(x,z)=>{let n=Math.sin(x*127.1+z*311.7+SEED)*43758.5453;return n-Math.floor(n)};
+function vn(x,z){const xi=Math.floor(x),zi=Math.floor(z),xf=x-xi,zf=z-zi,u=xf*xf*(3-2*xf),v=zf*zf*(3-2*zf);return lerp(lerp(h2(xi,zi),h2(xi+1,zi),u),lerp(h2(xi,zi+1),h2(xi+1,zi+1),u),v)}
+const hgt=(x,z)=>Math.floor(20+vn(x/52,z/52)*18+vn(x/20,z/20)*7+vn(x/7,z/7)*2);
+const chunks=new Map(),dirty=new Set();let edits={};
+try{edits=JSON.parse(localStorage.getItem('cubia_edits')||'{}')}catch(e){}
+const key=(a,b)=>a+','+b;
+function genChunk(cx,cz){
+ const d=new Uint8Array(CS*H*CS),c={cx,cz,d,mesh:null};
+ const set=(x,y,z,b)=>{if(x>=0&&x<CS&&z>=0&&z<CS&&y>=0&&y<H)d[(y*CS+z)*CS+x]=b};
+ for(let x=0;x<CS;x++)for(let z=0;z<CS;z++){
+  const wx=cx*CS+x,wz=cz*CS+z,h=hgt(wx,wz),sand=h<=24;
+  for(let y=0;y<=h;y++)set(x,y,z,y==h?(sand?4:1):y>h-4?(sand?4:2):3);
+  if(!sand&&x>2&&x<13&&z>2&&z<13&&h2(wx*7.1,wz*3.3)>.985){
+   const th=4+(h2(wx,wz*2.2)>.5?1:0);
+   for(let y=1;y<=th;y++)set(x,h+y,z,5);
+   for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)for(let dy=th-1;dy<=th+1;dy++){
+    if(Math.abs(dx)==2&&Math.abs(dz)==2)continue;if(dy==th+1&&(Math.abs(dx)>1||Math.abs(dz)>1))continue;
+    if(!(dx==0&&dz==0&&dy<=th))set(x+dx,h+dy,z+dz,6)}
+   set(x,h+th+1,z,6)}
+ }
+ for(const k in edits){const [x,y,z]=k.split(',').map(Number);if(Math.floor(x/CS)==cx&&Math.floor(z/CS)==cz)set(x-cx*CS,y,z-cz*CS,edits[k])}
+ chunks.set(key(cx,cz),c);dirty.add(c);
+ for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1]]){const n=chunks.get(key(cx+a,cz+b));if(n)dirty.add(n)}
+}
+function get(x,y,z){if(y<0)return 1;if(y>=H)return 0;const c=chunks.get(key(Math.floor(x/CS),Math.floor(z/CS)));if(!c)return 1;return c.d[(y*CS+(z-c.cz*CS))*CS+(x-c.cx*CS)]}
+function setB(x,y,z,b){const cx=Math.floor(x/CS),cz=Math.floor(z/CS),c=chunks.get(key(cx,cz));if(!c||y<0||y>=H)return;
+ c.d[(y*CS+(z-cz*CS))*CS+(x-cx*CS)]=b;edits[x+','+y+','+z]=b;saveSoon();build(c);
+ const lx=x-cx*CS,lz=z-cz*CS;
+ if(lx==0)rb(cx-1,cz);if(lx==CS-1)rb(cx+1,cz);if(lz==0)rb(cx,cz-1);if(lz==CS-1)rb(cx,cz+1)}
+const rb=(a,b)=>{const c=chunks.get(key(a,b));if(c)build(c)};
+let st;function saveSoon(){clearTimeout(st);st=setTimeout(()=>{try{localStorage.setItem('cubia_edits',JSON.stringify(edits))}catch(e){}},800)}
+// ---------- mesh ----------
+const F=[
+ {d:[1,0,0],c:[[1,0,1],[1,0,0],[1,1,0],[1,1,1]],s:.8},
+ {d:[-1,0,0],c:[[0,0,0],[0,0,1],[0,1,1],[0,1,0]],s:.8},
+ {d:[0,1,0],c:[[0,1,1],[1,1,1],[1,1,0],[0,1,0]],s:1},
+ {d:[0,-1,0],c:[[0,0,0],[1,0,0],[1,0,1],[0,0,1]],s:.55},
+ {d:[0,0,1],c:[[0,0,1],[1,0,1],[1,1,1],[0,1,1]],s:.9},
+ {d:[0,0,-1],c:[[1,0,0],[0,0,0],[0,1,0],[1,1,0]],s:.7}];
+const UV=[[0,0],[1,0],[1,1],[0,1]];
+const mat=new THREE.MeshBasicMaterial({map:tex,vertexColors:true,alphaTest:.5});
+function build(c){
+ const P=[],U=[],C=[],I=[];let n=0;
+ for(let y=0;y<H;y++)for(let z=0;z<CS;z++)for(let x=0;x<CS;x++){
+  const b=c.d[(y*CS+z)*CS+x];if(!b)continue;const wx=c.cx*CS+x,wz=c.cz*CS+z;
+  for(let f=0;f<6;f++){const q=F[f],nb=get(wx+q.d[0],y+q.d[1],wz+q.d[2]);
+   if(nb&&!(nb==6&&b!=6))continue;
+   const t=T[b][f==2?1:f==3?2:0];
+   for(let i=0;i<4;i++){const v=q.c[i];P.push(wx+v[0],y+v[1],wz+v[2]);U.push((t+.02+UV[i][0]*.96)/N,UV[i][1]);C.push(q.s,q.s,q.s)}
+   I.push(n,n+1,n+2,n,n+2,n+3);n+=4}}
+ if(c.mesh){scene.remove(c.mesh);c.mesh.geometry.dispose()}
+ const g=new THREE.BufferGeometry();
+ g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.setAttribute('color',new THREE.Float32BufferAttribute(C,3));g.setIndex(new THREE.Uint32BufferAttribute(I,1));
+ c.mesh=new THREE.Mesh(g,mat);c.mesh.frustumCulled=false;scene.add(c.mesh);dirty.delete(c)}
+// ---------- scena ----------
+const SKY=0x87ceeb,scene=new THREE.Scene();scene.background=new THREE.Color(SKY);scene.fog=new THREE.Fog(SKY,R*CS*.5,R*CS-6);
+const cam=new THREE.PerspectiveCamera(70,1,.05,300);cam.rotation.order='YXZ';
+const rd=new THREE.WebGLRenderer({canvas:$('c'),antialias:false});rd.setPixelRatio(Math.min(devicePixelRatio,isTouch?1.5:2));
+function rs(){rd.setSize(innerWidth,innerHeight,false);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}addEventListener('resize',rs);rs();
+const hl=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.004,1.004,1.004)),new THREE.LineBasicMaterial({color:0x000000}));hl.visible=false;scene.add(hl);
+// ---------- giocatore ----------
+const pl={x:8.5,y:60,z:8.5,vx:0,vy:0,vz:0,yaw:0,pitch:0,ground:false,fly:false};
+for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)genChunk(a,b);
+pl.y=hgt(8,8)+2;
+const col=(px,py,pz)=>{const w=.3;for(let x=Math.floor(px-w);x<=Math.floor(px+w);x++)for(let y=Math.floor(py);y<=Math.floor(py+1.8);y++)for(let z=Math.floor(pz-w);z<=Math.floor(pz+w);z++)if(get(x,y,z))return true;return false};
+const keys={};let jx=0,jy=0,jump=false,down=false;
+function step(dt){
+ const fwd=(keys.KeyW?1:0)-(keys.KeyS?1:0)-jy,str=(keys.KeyD?1:0)-(keys.KeyA?1:0)+jx,sp=pl.fly?11:4.5,sy=Math.sin(pl.yaw),cy=Math.cos(pl.yaw);
+ let mx=-sy*fwd+cy*str,mz=-cy*fwd-sy*str;const l=Math.hypot(mx,mz);if(l>1){mx/=l;mz/=l}
+ pl.vx=mx*sp;pl.vz=mz*sp;
+ const up=jump||keys.Space,dn=down||keys.ShiftLeft;
+ if(pl.fly)pl.vy=((up?1:0)-(dn?1:0))*8;else{pl.vy=Math.max(pl.vy-26*dt,-50);if(up&&pl.ground){pl.vy=8.6}}
+ pl.ground=false;
+ for(const a of ['x','y','z']){const v=pl['v'+a]*dt;pl[a]+=v;if(col(pl.x,pl.y,pl.z)){pl[a]-=v;if(a=='y'&&v<0)pl.ground=true;pl['v'+a]=0}}
+ if(pl.y<-20){pl.y=hgt(8,8)+3;pl.vy=0}
+}
+// ---------- raycast / azioni ----------
+function ray(){const d=new THREE.Vector3();cam.getWorldDirection(d);let px=cam.position.x,py=cam.position.y,pz=cam.position.z,lp=null;
+ for(let i=0;i<120;i++){const x=Math.floor(px),y=Math.floor(py),z=Math.floor(pz);
+  if(get(x,y,z)&&y>=0){return{h:[x,y,z],p:lp}}
+  lp=[x,y,z];px+=d.x*.05;py+=d.y*.05;pz+=d.z*.05}return null}
+let target=null;
+function breakB(){if(target&&target.h[1]>0)setB(...target.h,0)}
+function placeB(){if(!target||!target.p)return;const [x,y,z]=target.p,b=HOT[sel];setB(x,y,z,b);if(col(pl.x,pl.y,pl.z))setB(x,y,z,0)}
+let hold=false,hT=0;
+// ---------- input desktop ----------
+let started=false;
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code=='KeyF')pl.fly=!pl.fly;if(/^Digit[1-8]$/.test(e.code))pick(+e.code[5]-1)});
+addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('wheel',e=>pick(sel+(e.deltaY>0?1:-1)));
+addEventListener('mousemove',e=>{if(document.pointerLockElement){pl.yaw-=e.movementX*.0025;pl.pitch=Math.max(-1.55,Math.min(1.55,pl.pitch-e.movementY*.0025))}});
+addEventListener('mousedown',e=>{if(!document.pointerLockElement)return;if(e.button==0){hold=true;breakB();hT=0}else if(e.button==2)placeB()});
+addEventListener('mouseup',()=>hold=false);
+addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement&&started&&!isTouch){$('ov').style.display='flex';$('go').textContent='Riprendi'}});
+$('go').addEventListener('click',()=>{started=true;$('ov').style.display='none';if(!isTouch)$('c').requestPointerLock()});
+// ---------- input touch ----------
+const cv=$('c');let look=null,hold2;
+cv.addEventListener('touchstart',e=>{e.preventDefault();for(const t of e.changedTouches)if(!look){look={id:t.identifier,x:t.clientX,y:t.clientY,t:performance.now(),m:0};clearTimeout(hold2);hold2=setTimeout(()=>{if(look&&look.m<12){hold=true;hT=0;breakB()}},350)}},{passive:false});
+cv.addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches)if(look&&t.identifier==look.id){const dx=t.clientX-look.x,dy=t.clientY-look.y;look.x=t.clientX;look.y=t.clientY;look.m+=Math.abs(dx)+Math.abs(dy);pl.yaw-=dx*.005;pl.pitch=Math.max(-1.55,Math.min(1.55,pl.pitch-dy*.005))}},{passive:false});
+const tend=e=>{for(const t of e.changedTouches)if(look&&t.identifier==look.id){clearTimeout(hold2);if(hold)hold=false;else if(look.m<12&&performance.now()-look.t<350)placeB();look=null}};
+cv.addEventListener('touchend',tend);cv.addEventListener('touchcancel',tend);
+const joy=$('joy'),kn=$('knob');let jid=null;
+function jm(t){const r=joy.getBoundingClientRect();let dx=t.clientX-(r.left+65),dy=t.clientY-(r.top+65);const l=Math.hypot(dx,dy),m=55;if(l>m){dx*=m/l;dy*=m/l}kn.style.transform=`translate(${dx}px,${dy}px)`;jx=dx/m;jy=-dy/m;if(Math.abs(jx)<.12)jx=0;if(Math.abs(jy)<.12)jy=0}
+joy.addEventListener('touchstart',e=>{e.preventDefault();jid=e.changedTouches[0].identifier;jm(e.changedTouches[0])},{passive:false});
+joy.addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches)if(t.identifier==jid)jm(t)},{passive:false});
+const je=e=>{for(const t of e.changedTouches)if(t.identifier==jid){jid=null;jx=jy=0;kn.style.transform=''}};
+joy.addEventListener('touchend',je);joy.addEventListener('touchcancel',je);
+const bind=(id,on,off)=>{const b=$(id);b.addEventListener('touchstart',e=>{e.preventDefault();on()},{passive:false});if(off){b.addEventListener('touchend',off);b.addEventListener('touchcancel',off)}};
+bind('bj',()=>jump=true,()=>jump=false);bind('bd',()=>down=true,()=>down=false);
+bind('bf',()=>{pl.fly=!pl.fly;$('bd').style.display=pl.fly?'flex':'none'});
+// ---------- loop ----------
+let last=performance.now(),fr=0,fps=0,ft=0;
+function loop(now){requestAnimationFrame(loop);
+ const dt=Math.min((now-last)/1000,.05);last=now;
+ // caricamento chunk (uno per frame, i più vicini prima)
+ const pcx=Math.floor(pl.x/CS),pcz=Math.floor(pl.z/CS);let best=null,bd=1e9;
+ for(let a=-R;a<=R;a++)for(let b=-R;b<=R;b++){const d=a*a+b*b;if(d<=R*R&&d<bd&&!chunks.has(key(pcx+a,pcz+b))){bd=d;best=[pcx+a,pcz+b]}}
+ if(best)genChunk(...best);
+ let k=0;for(const c of dirty){build(c);if(++k>=2)break}
+ if(started){step(dt);if(hold){hT+=dt;if(hT>.22){hT=0;breakB()}}}
+ cam.position.set(pl.x,pl.y+1.62,pl.z);cam.rotation.set(pl.pitch,pl.yaw,0);
+ target=ray();hl.visible=!!target;if(target)hl.position.set(target.h[0]+.5,target.h[1]+.5,target.h[2]+.5);
+ rd.render(scene,cam);
+ fr++;ft+=dt;if(ft>.5){fps=Math.round(fr/ft);fr=0;ft=0;$('info').textContent=`${fps} fps · ${pl.x.toFixed(0)}, ${pl.y.toFixed(0)}, ${pl.z.toFixed(0)}${pl.fly?' · volo':''}`}}
+requestAnimationFrame(loop);
+</script></body></html>
